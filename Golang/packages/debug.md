@@ -1,0 +1,2 @@
+
+`debug.SetMaxThreads(n int)`

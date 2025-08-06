@@ -1,0 +1,3 @@
+- `go install golang.org/x/lint/golint@latest` - установка линтера
+- `go install golang.org/x/tools/cmd/godoc@latest` - установка godoc
+- `https://graphviz.org/download/` - софтина для просмотра диаграмм профилей
