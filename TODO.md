@@ -1,0 +1,1 @@
+https://techpoint.ozon.ru/contest/253?tab=tasks - контест озоносвкий
