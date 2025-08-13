@@ -5,7 +5,7 @@
 **S** — **Single Responsibility Principle** (Принцип единственной ответственности)
  * Определение: Каждый класс должен иметь только одну причину для изменения.
  * Пример:
-``` golang
+``` go
  type User struct {
     ID       int
     Name     string
@@ -24,8 +24,8 @@ func (u *User) Validate() error {
    
 
    В этом примере класс **User** нарушает принцип SRP, так как отвечает за сохранение в базе данных и валидацию. Лучше разделить эти обязанности:
-```
-   type UserRepository interface {
+```go
+type UserRepository interface {
     Save(user *User) error
 }
 
