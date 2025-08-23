@@ -32,7 +32,10 @@
 GOEXPERIMENT=arenas go build .
 ```
 
-2. **import "arena"**
+2. **Включать необходимый импорт**
+ ```go
+   import "arena"
+   ```
 
 ### Основные функции
 Основные функции находятся в пакете `arena` и позволяют создавать арены, выделять в них память для структур и слайсов, а также освобождать её.
@@ -53,77 +56,63 @@ GOEXPERIMENT=arenas go build .
 package main
 
 import (
-	"bufio"
-	"fmt"
-	"os"
-	"arena"
-	"strconv"
-	"strings"
-	"time"
+    "arena"
+    "fmt"
 )
 
-// Record — структура, которую будем создавать в арене
-type Record struct {
-	ID        int
-	Value     string
-	Timestamp time.Time
+// Пользовательская структура, которую мы будем создавать в арене.
+type User struct {
+    ID   int
+    Name string
 }
 
 func main() {
-	// Включаем флаг, чтобы использовать арены
-	// Для запуска: GOEXPERIMENT=arenas go run .
+    // Чтобы запустить этот код, используйте команду:
+    // GOEXPERIMENT=arenas go run main.go
+    // Создаем новую арену.
+    // arena.NewArena() - это основная функция для инициализации арены.
 
-	processFileWithArena("data.txt")
-}
+    a := arena.NewArena()
 
-func processFileWithArena(filename string) {
-	// 1. Создаем новую арену
-	a := arena.NewArena()
-	// 2. Гарантируем, что память освободится после завершения функции
-	defer a.Free() 
+    // Гарантируем, что память освободится после завершения функции.
+    // a.Free() освобождает всю память, выделенную в арене, одним махом.
 
-	file, err := os.Open(filename)
-	if err != nil {
-		fmt.Println("Ошибка открытия файла:", err)
-		return
-	}
-	defer file.Close()
+    defer a.Free()
 
-	scanner := bufio.NewScanner(file)
-	var records []*Record
+    // --- 1. Выделение памяти для одного объекта ---
+    // arena.New[T](a) выделяет память для одной структуры в арене.
+    user1 := arena.New[User](a)
+    user1.ID = 1
+    user1.Name = "Alice"
+    fmt.Printf("Создан пользователь в арене: %+v\n", *user1)
 
-	lineCount := 0
-	for scanner.Scan() {
-		lineCount++
-		parts := strings.Split(scanner.Text(), ",")
-		if len(parts) != 3 {
-			continue
-		}
+  
 
-		id, _ := strconv.Atoi(parts[0])
-		
-		// 3. Выделяем память для нового объекта в арене
-		record := arena.New[Record](a)
-		record.ID = id
-		record.Value = parts[1]
-		record.Timestamp, _ = time.Parse(time.RFC3339, parts[2])
+    // --- 2. Выделение памяти для слайса ---
+    // arena.MakeSlice[T](a, len, cap) создает слайс в арене.
+    // Это полезно для временных буферов.
+    numbers := arena.MakeSlice[int](a, 5, 10)
 
-		records = append(records, record)
-	}
+    for i := 0; i < len(numbers); i++ {
+        numbers[i] = (i + 1) * 10
+    }
 
-	if err := scanner.Err(); err != nil {
-		fmt.Println("Ошибка чтения файла:", err)
-		return
-	}
+    fmt.Printf("Создан слайс в арене: %v\n", numbers)
 
-	fmt.Printf("Обработано %d записей. Память выделена в арене.\n", lineCount)
-	
-	// Вся память, выделенная для объектов Record, будет освобождена
-	// автоматически при вызове a.Free() через defer.
-	// Нет необходимости в индивидуальной сборке мусора для каждого объекта.
-	
-	// Пример использования данных после аллокации
-	fmt.Printf("Первая запись: %+v\n", *records[0])
-	fmt.Printf("Последняя запись: %+v\n", *records[len(records)-1])
+    // --- 3. Клонирование объекта из арены в обычную кучу ---
+    // arena.Clone(a, val) копирует данные из арены в обычную кучу Go.
+    // Это нужно, если объект должен "пережить" вызов a.Free().
+    user2 := arena.New[User](a)
+    user2.ID = 2
+    user2.Name = "Bob"
+  
+    // Клонируем user2. После вызова a.Free() оригинальный user2 будет удален,
+    // но его клон в обычной куче останется.
+    user2Clone := arena.Clone(user2)
+    fmt.Printf("Клон пользователя в обычной куче: %+v\n", user2Clone)
+
+    // Память, выделенная для user1, user2 и слайса numbers,
+    // будет автоматически освобождена в конце функции благодаря defer a.Free().
+
 }
 ```
