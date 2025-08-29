@@ -74,21 +74,197 @@ type DoublyNode[T any] struct {
 - При реализации нужно быть внимательным, чтобы не попасть в бесконечный цикл.
 
 
-### Основные Операции со Связанными Списками
-## Основные Операции со Связанными Списками
+### Примеры основных операций со связанными списками
 
 Независимо от типа, большинство связанных списков поддерживают следующие базовые операции:
-- **`AddFront(value)` / `PushFront(value)`:** Добавить элемент в начало списка.
-- **`AddBack(value)` / `PushBack(value)`:** Добавить элемент в конец списка.
-- **`RemoveFront()` / `PopFront()`:** Удалить элемент из начала списка.
-- **`RemoveBack()` / `PopBack()`:** Удалить элемент из конца списка.
-- **`Insert(index, value)` / `AddAfter(node, value)`:** Вставить элемент в определённую позицию или после указанного узла.
-- **`Remove(value)` / `RemoveAt(index)`:** Удалить элемент по значению или по индексу.
-- **`Find(value)`:** Найти элемент по значению и вернуть узел (или его индекс).
-- **`IsEmpty()`:** Проверить, пуст ли список.
-- **`Size()`:** Вернуть количество элементов в списке.
-- **`Traverse()` / `Print()`:** Пройти по всем элементам списка и вывести их.
+- **`Append(data)`** — Добавить новый элемент в **конец** списка.
+- **`Prepend(data)`** — Добавить новый элемент в **начало** списка.
+- **`InsertAt(index, data)`** — Вставить элемент по **указанному индексу**.
+- **`Remove(data)`** — Удалить первый найденный элемент, содержащий указанные данные.
+- **`RemoveAt(index)`** — Удалить элемент по **указанному индексу**.
+- **`Search(data)`** — Найти и вернуть первый узел, содержащий указанные данные.
+- **`GetAt(index)`** — Получить данные узла по **указанному индексу**.
+- **`Display()`** или **`Print()`** — Вывести все элементы списка в консоль.
+- **`Size()`** или **`Length()`** — Вернуть количество элементов в списке.
+- **`DisplayForward()`** — Вывести все элементы  двухсвязного списка, двигаясь от начала к концу.
+- **`DisplayBackward()`** — Вывести все элементы двухсвязного списка, двигаясь от конца к началу.
+
+
+### ПРИМЕРЫ РЕАЛИЗАЦИЙ СПИСКОВ
+
+#### Связанный список
+```go
+package main
+
+import "fmt"
+
+// Node представляет отдельный узел в списке
+type Node struct {
+	data interface{}
+	next *Node
+}
+
+// LinkedList представляет сам связанный список
+type LinkedList struct {
+	head *Node
+	size int
+}
+
+// Append добавляет новый узел в конец списка
+func (l *LinkedList) Append(data interface{}) {
+	newNode := &Node{data: data, next: nil}
+	if l.head == nil {
+		l.head = newNode
+	} else {
+		current := l.head
+		for current.next != nil {
+			current = current.next
+		}
+		current.next = newNode
+	}
+	l.size++
+}
+
+// Prepend добавляет новый узел в начало списка
+func (l *LinkedList) Prepend(data interface{}) {
+	newNode := &Node{data: data, next: l.head}
+	l.head = newNode
+	l.size++
+}
+
+// Display печатает все элементы списка
+func (l *LinkedList) Display() {
+	if l.head == nil {
+		fmt.Println("List is empty")
+		return
+	}
+	current := l.head
+	for current != nil {
+		fmt.Printf("%v -> ", current.data)
+		current = current.next
+	}
+	fmt.Println("nil")
+}
+
+// Size возвращает количество элементов в списке
+func (l *LinkedList) Size() int {
+	return l.size
+}
+
+func main() {
+	myList := &LinkedList{}
+
+	myList.Append("first")
+	myList.Append("second")
+	myList.Append("third")
+	myList.Display() // Вывод: first -> second -> third -> nil
+
+	myList.Prepend("new first")
+	myList.Display() // Вывод: new first -> first -> second -> third -> nil
+
+	fmt.Printf("Size of the list: %d\n", myList.Size()) // Вывод: Size of the list: 4
+}
+```
 
 
 
-### ПРИМЕРЫ
+#### Двухсвязный список
+```go
+package main
+
+import "fmt"
+
+// Node представляет отдельный узел в двусвязном списке
+type Node struct {
+	data interface{}
+	next *Node
+	prev *Node
+}
+
+// DoublyLinkedList представляет сам двусвязный список
+type DoublyLinkedList struct {
+	head *Node
+	tail *Node
+	size int
+}
+
+// Append добавляет новый узел в конец списка
+func (l *DoublyLinkedList) Append(data interface{}) {
+	newNode := &Node{data: data, next: nil, prev: nil}
+	if l.head == nil {
+		l.head = newNode
+		l.tail = newNode
+	} else {
+		l.tail.next = newNode
+		newNode.prev = l.tail
+		l.tail = newNode
+	}
+	l.size++
+}
+
+// Prepend добавляет новый узел в начало списка
+func (l *DoublyLinkedList) Prepend(data interface{}) {
+	newNode := &Node{data: data, next: nil, prev: nil}
+	if l.head == nil {
+		l.head = newNode
+		l.tail = newNode
+	} else {
+		l.head.prev = newNode
+		newNode.next = l.head
+		l.head = newNode
+	}
+	l.size++
+}
+
+// DisplayForward печатает все элементы списка от начала до конца
+func (l *DoublyLinkedList) DisplayForward() {
+	if l.head == nil {
+		fmt.Println("List is empty")
+		return
+	}
+	current := l.head
+	for current != nil {
+		fmt.Printf("%v <-> ", current.data)
+		current = current.next
+	}
+	fmt.Println("nil")
+}
+
+// DisplayBackward печатает все элементы списка от конца к началу
+func (l *DoublyLinkedList) DisplayBackward() {
+	if l.tail == nil {
+		fmt.Println("List is empty")
+		return
+	}
+	current := l.tail
+	for current != nil {
+		fmt.Printf("%v <-> ", current.data)
+		current = current.prev
+	}
+	fmt.Println("nil")
+}
+
+// Size возвращает количество элементов в списке
+func (l *DoublyLinkedList) Size() int {
+	return l.size
+}
+
+func main() {
+	myList := &DoublyLinkedList{}
+
+	myList.Append("first")
+	myList.Append("second")
+	myList.Append("third")
+	fmt.Print("Forward: ")
+	myList.DisplayForward() // Вывод: Forward: first <-> second <-> third <-> nil
+
+	fmt.Print("Backward: ")
+	myList.DisplayBackward() // Вывод: Backward: third <-> second <-> first <-> nil
+
+	myList.Prepend("new first")
+	fmt.Print("Forward: ")
+	myList.DisplayForward() // Вывод: Forward: new first <-> first <-> second <-> third <-> nil
+
+	fmt.Printf("Size of the list: %d\n", myList.Size()) // Вывод: Size of the list: 4
+}
+```
