@@ -91,4 +91,4 @@ type DoublyNode[T any] struct {
 
 
 
-### ПИРМЕРЫ
+### ПРИМЕРЫ
