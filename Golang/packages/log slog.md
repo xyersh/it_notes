@@ -38,9 +38,9 @@
 
 ### slog API
 
-- `slog.New(h slog.Handler)` - создаёт новый **логгер** (`*slog.Logger`). Она принимает один аргумент: `h`, который является обработчиком (`slog.Handler`).
+- `slog.New(h slog.Handler)(*slog.Logger)` - создаёт новый **логгер** . Она принимает один аргумент: `h`, который является обработчиком (`slog.Handler`).
 
-##### slog.Loggerf
+##### slog.Logger
 ```go
 handler := slog.NewTextHandler(os.Stdout, nil)
 logger := slog.New(handler)
@@ -117,7 +117,7 @@ handler := slog.NewTextHandler(os.Stdout, opts)
 ```
 
 ##### #### Глобальный логгер
-
+Глобальный логгер в контексте пакета `log/slog` — это **логгер, который используется по умолчанию во всей программе**. Он доступен через функции верхнего уровня в пакете, такие как `slog.Info`, `slog.Error` и так далее.
 - `slog.Default() *slog.Logger`: Возвращает глобальный логгер, который по умолчанию использует `slog.NewTextHandler(os.Stderr, nil)` с уровнем `Info`.
 - `slog.SetDefault(l *Logger)`: Устанавливает переданный логгер как глобальный. Это удобно для централизованной конфигурации.
 ```go
@@ -127,7 +127,6 @@ slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 // Использование глобального логгера
 slog.Info("Application started")
 ```
-
 
 
 
