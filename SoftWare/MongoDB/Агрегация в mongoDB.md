@@ -26,102 +26,183 @@
 
 ### Практический пример
   
-Предположим, у нас есть коллекция `sales` с данными о продажах:
+Предположим, у нас есть коллекция `sale_report` с данными о продажах:
 ```js
-{ "_id": 1, "product": "T-shirt", "category": "apparel", "quantity": 10, "price": 15 }
-{ "_id": 2, "product": "Jeans", "category": "apparel", "quantity": 5, "price": 50 }
-{ "_id": 3, "product": "Phone", "category": "electronics", "quantity": 2, "price": 400 }
-{ "_id": 4, "product": "T-shirt", "category": "apparel", "quantity": 8, "price": 15 }
+
+{ "_id": 1, "product": "Laptop Pro", "region": "North", "sales_rep": "Alice", "quantity": 10, "price": 1200, "sale_date": ISODate("2024-01-05T00:00:00Z"), "status": "completed" },
+
+{ "_id": 2, "product": "Monitor 27", "region": "North", "sales_rep": "Alice", "quantity": 5, "price": 300, "sale_date": ISODate("2024-01-20T00:00:00Z"), "status": "completed" },
+
+{ "_id": 3, "product": "Laptop Pro", "region": "South", "sales_rep": "Bob", "quantity": 15, "price": 1200, "sale_date": ISODate("2024-02-10T00:00:00Z"), "status": "completed" },
+
+{ "_id": 4, "product": "Keyboard Mech", "region": "South", "sales_rep": "Bob", "quantity": 20, "price": 80, "sale_date": ISODate("2024-02-15T00:00:00Z"), "status": "completed" },
+
+{ "_id": 5, "product": "Monitor 27", "region": "East", "sales_rep": "Charlie", "quantity": 12, "price": 300, "sale_date": ISODate("2024-03-01T00:00:00Z"), "status": "pending" },
+
+{ "_id": 6, "product": "Laptop Pro", "region": "East", "sales_rep": "Charlie", "quantity": 7, "price": 1200, "sale_date": ISODate("2024-03-25T00:00:00Z"), "status": "completed" 
 ```
 
-Наша задача: **подсчитать общее количество проданных товаров для каждой категории и отсортировать результат.**
+Наша задача: **подсчитать общее количество проданных товаров  и сумму прибыли в разрезе каждого менеджера.**
 
-Для этого нам понадобится конвейер из трех стадий: `$group`, `$project` и `$sort`.
+Для для примера работы аггрегатного конвейера представлена работа следующих операторов: `$match`, `$addFields`, `$group`, `$project` и `$sort`, `$limit`, `$skip`
 
-#### 1. Стадия `$group`
-
-Мы хотим сгруппировать документы по полю `category`. Внутри каждой группы мы посчитаем общую сумму поля `quantity`.
-
-JSON
-
-```
+#### 1. Стадия `$match`
+Проводит фильтрацию ненужных строк по условию. Из коллккции отбираем записи у которых ключ "status" = "completed", а также дата продажи в диапазоне **\[ 2024-01-01, 024-02-01 )**
+```js
 {
-  $group: {
-    _id: "$category",
-    totalQuantity: { $sum: "$quantity" }
-  }
+	$match: {
+		"status": "completed",
+		"sale_date": {
+			$gte: ISODate("2024-01-01T00:00:00Z"),
+			$lt: ISODate("2024-02-01T00:00:00Z")
+		}
+	}
+}
+```
+
+
+#### 2. Стадия `$addFields`
+Опционная стадия.
+Добавляет поле ключ **revenue** со значением произведения количества товара на его цену
+```js
+{
+	$addFields:{
+	"revenue":{$multiply: ["$quantity", "$price"]}
+	}
+}
+```
+
+
+#### 3. Стадия `$group`
+
+Мы хотим сгруппировать записи по полю `sales_rep`. Внутри каждой группы мы посчитаем общие суммы полей `quantity`, `revenue`.
+```js
+{
+	$group: {
+		_id: "$sales_rep",
+		totalRevenue: { $sum: "$revenue" },
+		totalQuantitySold: { $sum: "$quantity" }
+	}
 }
 ```
 
 - `_id`: Это поле-идентификатор для группы. Мы указываем `"$category"`, что означает группировку по уникальным значениям поля `category`.
-    
-- `totalQuantity`: Это новое поле, которое мы создаем. С помощью оператора `$sum` мы суммируем значения поля `quantity` для всех документов в группе.
-    
 
-#### 2. Стадия `$project`
+- `totalQuantitySold`: Это новое поле, которое мы создаем. С помощью оператора `$sum` мы суммируем значения поля `quantity` для всех документов в группе.
+- `totalRevenue` : итоговый доход в группировке по полю **sales_rep**
 
-Эта стадия не является обязательной в этом примере, но она полезна для того, чтобы сделать вывод более читаемым, например, переименовать `_id` в `category`.
+#### 4. Стадия `$project`
 
-JSON
-
-```
+Эта стадия не является обязательной.
+Данная стадия используется  для определения итогового виды получаемых json. В данном случае поле `_id` не оттбразывает из вывода, поле `totalRevenue` переименовывается в `revenue`, а `totalQuantitySold` - в `quantity`.
+```js
 {
-  $project: {
-    _id: 0, // Исключаем поле _id из результата
-    category: "$_id", // Переименовываем _id в category
-    totalQuantity: 1 // Включаем поле totalQuantity
-  }
+	$project: {
+		_id: 0,
+		manager: "$_id",
+		revenue: "$totalRevenue",
+		quantity: "$totalQuantitySold"
+	}
 }
 ```
 
-#### 3. Стадия `$sort`
+#### 5. Стадия `$sort`
 
 Теперь отсортируем результат по общему количеству по убыванию.
-
-JSON
-
-```
+```js
 {
-  $sort: { "totalQuantity": -1 }
+	$sort: {
+		"revenue": -1
+	}
 }
 ```
 
+#### 6. Стадия `$limit`
+
+Данный этап  ограничивает замер выборки, устанавливает максимаьлное количество строк (= 10).
+```js
+{
+	$limit: 10
+}
+```
+
+
+#### 7. `$skip`
+Применяется в сочетании с `$limit`. Используется для смещения окна выборки.
+```js
+{
+	$skip: 0
+}
+```
 #### Полный запрос
 
 Объединяя все стадии, получаем полный запрос агрегации:
+```js
+db.sales_report.aggregate([
 
-JavaScript
+	// 1. Фильтрация
+	{
+		$match: {
+			"status": "completed",
+			"sale_date": {
+				$gte: ISODate("2024-01-01T00:00:00Z"),
+				$lt: ISODate("2024-02-01T00:00:00Z")
+			}
+		}
+	},
 
-```
-db.sales.aggregate([
-  {
-    $group: {
-      _id: "$category",
-      totalQuantity: { $sum: "$quantity" }
-    }
-  },
-  {
-    $project: {
-      _id: 0,
-      category: "$_id",
-      totalQuantity: 1
-    }
-  },
-  {
-    $sort: { "totalQuantity": -1 }
-  }
-]);
+	// 2. Расчет
+	{
+		$addFields:{
+			"revenue":{$multiply: ["$quantity", "$price"]}
+		}
+	},
+
+	// 3. Группировка
+	{
+		$group: {
+			_id: "$sales_rep",
+			totalRevenue: { $sum: "$revenue" },
+			totalQuantitySold: { $sum: "$quantity" }
+		}
+	},
+
+	// 4. Проекция
+	{
+		$project: {
+		_id: 0,
+		manager: "$_id",
+		revenue: "$totalRevenue",
+		quantity: "$totalQuantitySold"
+		}
+	},
+
+	// 5. Сортировка
+	{
+		$sort: {
+			"revenue": -1
+		}
+	},
+
+	// 6. Ограничение
+	{
+		$limit: 10
+	},
+
+	// 7. Смещение
+	{
+		$skip: 0
+	}
+])
 ```
 
 **Ожидаемый результат:**
-
-JSON
-
-```
-[
-  { "category": "apparel", "totalQuantity": 18 },
-  { "category": "electronics", "totalQuantity": 2 }
-]
+``` js
+{
+	"manager" : "Alice",
+	"revenue" : NumberInt(13500),
+	"quantity" : NumberInt(15)
+}
 ```
 
 Таким образом, агрегация позволяет вам проводить сложный анализ данных прямо на сервере базы данных, что значительно эффективнее, чем извлекать все данные и обрабатывать их на стороне приложения.
