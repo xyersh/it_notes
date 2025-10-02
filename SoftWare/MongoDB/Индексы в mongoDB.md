@@ -46,7 +46,7 @@ db.users.getIndexes();
 ```
 
 #### Удаление индекса
-Для удаления индекса используется метод `db.collection.dropIndex()`.
+Для удаления индекса используется метод `db.collection.dropIndex(<INDEX_NAME>)`.
 ```js
 db.users.dropIndex({ "name": 1 });
 ```
