@@ -1,2 +1,2 @@
 
-`debug.SetMaxThreads(n int)`
+**debug.SetMaxThreads(n nThreads) defaultVal int** - Устанавливает максимально допустимое количество потоков. Возвращает предыдущий лимит количества потоков. 
