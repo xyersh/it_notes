@@ -48,7 +48,13 @@ func main() {
 	fmt.Println("All workers finished.")
 }
 ```
-### Пример 2 - семафор в виде структуры 
+
+
+
+
+
+### Пример 2 - семафор в виде структуры
+
 ```go
 package main  
   
@@ -58,40 +64,40 @@ import (
     "time")  
   
 type Semaphore struct {  
-    tickets chan struct{}  
+	tickets chan struct{}  
 }  
   
 func NewSemaphore(ticketsNumber int) *Semaphore {  
-    return &Semaphore{make(chan struct{}, ticketsNumber)}  
+	return &Semaphore{make(chan struct{}, ticketsNumber)}  
 }  
 
 // семафор занимает критическую секцию 
 func (s *Semaphore) Acquire() {  
-    s.tickets <- struct{}{}  
+	s.tickets <- struct{}{}  
 }  
 
 // семафор отпускает критическую секцию
 func (s *Semaphore) Release() {  
-    <-s.tickets  
+	<-s.tickets  
 }  
   
 func main() {  
-    wg := sync.WaitGroup{}  
-    wg.Add(6)  
-    semaphore := NewSemaphore(3)  
-    for i := 0; i < 6; i++ {  
-       semaphore.Acquire()  
-       go func() {  
-          defer func() {  
-             semaphore.Release()  
-             wg.Done()  
-          }()  
-          fmt.Printf("working...%d\n", i)  
-          time.Sleep(time.Second * 2)  
-          fmt.Printf("done %d\n", i)  
-       }()  
-    }  
+	wg := sync.WaitGroup{}  
+	wg.Add(6)  
+	semaphore := NewSemaphore(3)  
+	for i := 0; i < 6; i++ {  
+		semaphore.Acquire()  
+		go func() {  
+			defer func() {  
+			semaphore.Release()  
+			wg.Done()  
+		}()  
+		fmt.Printf("working...%d\n", i)  
+		time.Sleep(time.Second * 2)  
+		fmt.Printf("done %d\n", i)  
+		}()  
+	}  
   
-    wg.Wait()  
+	wg.Wait()  
 }
 ```
