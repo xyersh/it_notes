@@ -42,11 +42,6 @@ func main() {
 		Handler: nil, // Используем дефолтный ServeMux
 	}
 
-	// Канал для приема сигналов завершения
-	quit := make(chan os.Signal, 1)
-	// Подписываемся на сигналы SIGINT и SIGTERM
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	// Запускаем HTTP-сервер в отдельной горутине
 	go func() {
 		fmt.Println("Сервер запущен на http://localhost:8080")
@@ -54,6 +49,13 @@ func main() {
 			fmt.Printf("Ошибка при запуске сервера: %v\n", err)
 		}
 	}()
+	
+	// Канал для приема сигналов завершения
+	quit := make(chan os.Signal, 1)
+	// Подписываемся на сигналы SIGINT и SIGTERM
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+
 
 	// Ожидаем сигнала завершения
 	<-quit
