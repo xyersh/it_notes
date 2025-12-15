@@ -11,7 +11,7 @@ import (
     "fmt"  
     "sync")  
   
-func Pool(in chan int, numWorkers int, f func(int) int) chan int {  
+func Pool(in <-chan int, numWorkers int, f func(int) int) <-chan int {  
     out := make(chan int)  
     wg := &sync.WaitGroup{}  
     wg.Add(1)  
