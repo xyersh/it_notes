@@ -57,3 +57,97 @@ CQRS можно реализовать на разных уровнях слож
 
 
 ## ПРИМЕР РЕАЛИЗАЦИИ CQRS В GOLANG
+Рассмотрим пример системы управления пользователями.
+
+### 1. Модель данных и разделение
+В CQRS мы разделяем «доменную» модель (для логики) и «проекцию» (для чтения).
+```go
+// Domain Model (для записи)
+type User struct {
+    ID       string
+    Email    string
+    Password string // Хранится в БД для записи
+}
+
+// Read Model / DTO (для чтения)
+type UserView struct {
+    ID    string `json:"id"`
+    Email string `json:"email"`
+    // Пароля здесь нет — это безопасно и эффективно
+}
+```
+
+### 2. Команды (Write Side)
+
+Команды описывают **намерение** изменить состояние. Для каждой команды создается свой обработчик (Handler).
+```go
+// Команда на создание
+type CreateUserCommand struct {
+    Email    string
+    Password string
+}
+
+// Обработчик команды
+type UserCommandHandler struct {
+    repo UserRepository // Интерфейс к БД (Write)
+}
+
+func (h *UserCommandHandler) Handle(cmd CreateUserCommand) error {
+    // Здесь бизнес-логика: валидация, хеширование пароля
+    user := &User{Email: cmd.Email, Password: hash(cmd.Password)}
+    return h.repo.Save(user)
+}
+```
+
+### 3. Запросы (Read Side)
+
+Запросы возвращают данные максимально быстро, часто в обход сложной логики.
+```go
+// Запрос на получение
+type GetUserQuery struct {
+    ID string
+}
+
+// Обработчик запроса
+type UserQueryHandler struct {
+    db ReadDatabase // Может быть другой БД или просто Read-only соединение
+}
+
+func (h *UserQueryHandler) Handle(query GetUserQuery) (*UserView, error) {
+    // Мы достаем сразу готовую структуру для API
+    return h.db.FindUserView(query.ID)
+}
+```
+
+
+### 4. Собираем всё вместе в API
+
+В Go удобно использовать структуру `Application`, которая объединяет все команды и запросы.
+```go
+type Application struct {
+    Commands Commands
+    Queries  Queries
+}
+
+type Commands struct {
+    CreateUser UserCommandHandler
+}
+
+type Queries struct {
+    GetUser UserQueryHandler
+}
+
+// Пример использования в HTTP обработчике
+func (s *Server) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
+    cmd := CreateUserCommand{Email: "test@example.com", Password: "123"}
+    
+    // Выполняем командуw
+    err := s.app.Commands.CreateUser.Handle(cmd)
+    
+    if err != nil {
+        http.Error(w, "Error", 500)
+        return
+    }
+    w.WriteHeader(http.StatusCreated)
+}
+```
