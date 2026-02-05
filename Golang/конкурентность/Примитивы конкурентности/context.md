@@ -50,8 +50,118 @@
 	- `f`: Функция без аргументов и без возвращаемых значений, которая будет выполнена после завершения `ctx`.
 	- `stop`: Возвращаемая функция. Вызов `stop()` предотвращает вызов `f`. Если `f` уже была вызвана или была запланирована к вызову, или если `ctx` еще не завершен и `f` успешно "остановлена", `stop()` возвращает `true`. Если `f` уже была вызвана (или `ctx` был завершен и `f` вот-вот будет вызвана, но еще не завершилась), `stop()` возвращает `false`.
 	`AfterFunc` удобна для выполнения действий по очистке или уведомлений без необходимости вручную запускать горутину с `select` на `ctx.Done()`. Это упрощает код и уменьшает вероятность ошибок.
-### Примеры
-####  Пример использования контекста WithCancel:
+
+## РЕКОМЕНДАЦИИ ИСПОЛЬЗОВАНИЯ КОНТЕКСТОВ
+
+####  **Передавать контекст первым парамeтром**  
+
+```go
+func ProcessData(ctx context.Context, data []byte) error // ✅ Good
+func ProcessData(data []byte, ctx context.Context) error // ❌ Bad
+```
+
+#### Всегда вызывать cancel() для предотвращения утечки памяти
+
+```go
+ctx, cancel := context.WithTimeout(parent, 30*time.Second)
+defer cancel() // ✅ Always do this
+```
+
+#### Проверять ctx.Done() в циклах и долго работающих операциях
+
+```go
+for i := 0; i < len(items); i++ {
+    select {
+    case <-ctx.Done():
+        return ctx.Err()
+    default:
+    }
+    processItem(items[i])
+}
+```
+
+#### Использовать контексты для передачи только связанных с запросом данных
+```go
+ctx = context.WithValue(ctx, "traceID", "abc123")
+ctx = context.WithValue(ctx, "userID", "user456")
+```
+
+
+#### Получать дочерние контексты с использованием родительских
+```go
+childCtx, cancel := context.WithTimeout(parentCtx, 10*time.Second)
+```
+
+
+#### НЕ хранить контексты в атрибутах структур
+```go
+// ❌ Bad - context stored in struct
+type Server struct {
+    ctx context.Context
+}
+
+// ✅ Good - context passed as parameter
+func (s *Server) ProcessRequest(ctx context.Context) error
+```
+
+#### НЕ передавать nil-контексты
+```golang
+ProcessData(nil, data) // ❌ Bad
+ProcessData(context.Background(), data) // ✅ Good
+```
+
+#### НЕ использовать контексты для опционных параметров
+```go
+// ❌ Bad - using context for config
+ctx = context.WithValue(ctx, "retryCount", 3)
+
+// ✅ Good - use struct for config
+type Config struct {
+    RetryCount int
+}
+func ProcessData(ctx context.Context, cfg Config) error
+```
+
+
+#### НЕ игнорировать отмену контекста
+```go
+// ❌ Bad - ignoring context
+func doWork(ctx context.Context) {
+    for i := 0; i < 1000; i++ {
+        // No context checking
+        time.Sleep(100 * time.Millisecond)
+    }
+}
+
+// ✅ Good - respecting context
+func doWork(ctx context.Context) error {
+    for i := 0; i < 1000; i++ {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        default:
+        }
+        time.Sleep(100 * time.Millisecond)
+    }
+    return nil
+}
+```
+
+#### 
+
+- **`context.Background()` только в `main` или на верхнем уровне:** Для инициализации корневого контекста.
+- **`context.TODO()` как временная мера:** Когда вы еще не решили, какой контекст использовать, или функция находится в процессе рефакторинга.
+- **`context.WithValue()` с осторожностью:** Только для данных, специфичных для запроса, и используйте кастомные типы для ключей. Не для опциональных параметров!
+- **Никогда не передавайте `nil` `Context`:** Если не уверены, передайте `context.TODO()`. Однако, функции должны быть готовы к тому, что `Context` может быть `nil`, хотя это считается плохой практикой со стороны вызывающего. Лучше всегда ожидать не-`nil` `Context`.
+- **Канал `Done()` только для чтения:** `<-ctx.Done()`.
+- **Проверяйте `ctx.Err()` после `ctx.Done()`:** Чтобы понять причину отмены.
+- **Контекст распространяется вниз по стеку вызовов.** Отмена родительского контекста отменяет все дочерние.
+
+
+
+
+## Примеры
+####  WithCancel:
 	
 ```go
 package main
@@ -85,7 +195,7 @@ func monitor(ctx context.Context) {
 }
 ```
 
-#### Пример использования контекста WithDeadline:
+#### WithDeadline:
 ```go
 package main
 
@@ -126,7 +236,7 @@ func main() {
 }
 ```
 
-#### Пример использования контекста WithTimeout:
+#### WithTimeout:
 ```go
 package main
 
@@ -167,7 +277,7 @@ func performTask(ctx context.Context, result chan<- string) {
 }
 ```
 
-#### Пример использования контекста WithValue:
+#### WithValue:
 ```go
 package main
 
@@ -221,7 +331,7 @@ func main() {
 ```
 
 
-#### пример использования WithCancelCause
+#### WithCancelCause
 ```go
 package main
 
@@ -265,7 +375,7 @@ func main() {
 }
 ```
 
-#### Пример использования  AfterFunc() без применения функции остановки
+#### AfterFunc() без применения функции остановки
 ``` go
 package main
 
@@ -300,7 +410,7 @@ func main() {
 }
 ```
 
-#### Пример использования AfterFunc() с применения функции остановки
+#### AfterFunc() с применения функции остановки
 ```go
 package main
 
@@ -418,7 +528,7 @@ func main() {
 }
 ```
 
-### Распространение контекста (Propagation)
+#### Распространение контекста (Propagation)
 Ключевой аспект работы с `context` — это его передача (проброс) через вызовы функций.
 
 - Функции, которые могут быть длительными или требуют отмены/таймаута, должны принимать `context.Context` **в качестве первого параметра**.
@@ -446,14 +556,4 @@ func MyFunction(ctx context.Context, arg1 string, arg2 int) error {
 }
 ```
 
-### Лучшие практики и распространенные ошибки
-- **Передавайте `Context` как первый аргумент:** `func DoSomething(ctx context.Context, ...)`
-- **Не храните `Context` в структурах:** Вместо этого передавайте его явно в методы, которым он нужен.
-- **Всегда вызывайте `cancel()` функцию:** Используйте `defer cancel()` сразу после получения `cancel` функции от `WithCancel`, `WithTimeout` или `WithDeadline`, чтобы гарантировать освобождение ресурсов.
-- **`context.Background()` только в `main` или на верхнем уровне:** Для инициализации корневого контекста.
-- **`context.TODO()` как временная мера:** Когда вы еще не решили, какой контекст использовать, или функция находится в процессе рефакторинга.
-- **`context.WithValue()` с осторожностью:** Только для данных, специфичных для запроса, и используйте кастомные типы для ключей. Не для опциональных параметров!
-- **Никогда не передавайте `nil` `Context`:** Если не уверены, передайте `context.TODO()`. Однако, функции должны быть готовы к тому, что `Context` может быть `nil`, хотя это считается плохой практикой со стороны вызывающего. Лучше всегда ожидать не-`nil` `Context`.
-- **Канал `Done()` только для чтения:** `<-ctx.Done()`.
-- **Проверяйте `ctx.Err()` после `ctx.Done()`:** Чтобы понять причину отмены.
-- **Контекст распространяется вниз по стеку вызовов.** Отмена родительского контекста отменяет все дочерние.
+
