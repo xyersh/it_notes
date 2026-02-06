@@ -31,12 +31,12 @@
 	- Если контекст был отменен из-за дедлайна (`WithDeadline` или `WithTimeout`), то `Cause` вернет `DeadlineExceeded`.
 	- Если контекст был отменен функцией  `CancelFunc`, то  `Cause()` вернет `context.Canceled`  
 	- Если контекст был отменен функцией `cancel() CancelCauseFunc`  (из `context.WithCancelCause`) с указанием конкретной ошибки `errCause` параметром ф-ции `cancel()` , то `Cause` вернет `errCause`.
-	- Если был отменен контекст типа `WithDeadlineCause` или `WithTimeoutCause` с указанием  ошибки `errCause` в параметре - то возврачается `errCause`
+	- Если был отменен контекст типа `WithDeadlineCause` или `WithTimeoutCause` с указанием  ошибки `errCause` в параметре - то возвращается `errCause`
 	- Если контекст еще не отменен, `Cause` вернет `nil`.
 
 ###  Виды контекстов
 
-- **`context.Background()`** - Возвращает пустой контекст, который никогда не отменяется. Возвращает пустой контекст, который никогда не отменяется
+- **`context.Background()`** - Возвращает пустой контекст, который никогда не отменяется
 - **`context.TODO()`** - Аналогичен `context.Background()`, но используется, когда не ясно, какой контекст использовать.
 -  **`WithCancel(parent Context)(ctx Context, cancel CancelFunc)`** - Создает новый контекст, который может быть отменен с помощью функции `cancel`. Когда вызывается `cancel`, контекст отменяется, и канал `Done()` закрывается.
 - **`WithTimeout(parent Context, timeout time.Duration)(Context, CancelFunc)`** - Аналогичен `WithDeadline`, но принимает длительность времени `timeout` вместо конкретного времени.  Контекст отменяется через указанное время.
@@ -53,22 +53,27 @@
 
 ## РЕКОМЕНДАЦИИ ИСПОЛЬЗОВАНИЯ КОНТЕКСТОВ
 
-####  **Передавать контекст первым парамeтром**  
+- **`context.Background()` только в `main` или на верхнем уровне:** Для инициализации корневого контекста.
 
+- **`context.TODO()` как временная мера:** Когда вы еще не решили, какой контекст использовать, или функция находится в процессе рефакторинга.
+
+- **Контекст распространяется вниз по стеку вызовов.** Отмена родительского контекста отменяет все дочерние.
+
+*  **Передавать контекст первым парамeтром**  
 ```go
 func ProcessData(ctx context.Context, data []byte) error // ✅ Good
 func ProcessData(data []byte, ctx context.Context) error // ❌ Bad
 ```
 
-#### Всегда вызывать cancel() для предотвращения утечки памяти
-
+* **Всегда вызывать cancel() для предотвращения утечки памяти**
 ```go
 ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 defer cancel() // ✅ Always do this
 ```
 
-#### Проверять ctx.Done() в циклах и долго работающих операциях
+- **Использовать канал Done() только для чтения**
 
+* **Проверять ctx.Done() в циклах и долго работающих операциях**
 ```go
 for i := 0; i < len(items); i++ {
     select {
@@ -80,20 +85,20 @@ for i := 0; i < len(items); i++ {
 }
 ```
 
-#### Использовать контексты для передачи только связанных с запросом данных
+* **Использовать контексты для передачи только специфичных для запроса  данных**
 ```go
 ctx = context.WithValue(ctx, "traceID", "abc123")
 ctx = context.WithValue(ctx, "userID", "user456")
 ```
 
 
-#### Получать дочерние контексты с использованием родительских
+* **Получать дочерние контексты с использованием родительских**
 ```go
 childCtx, cancel := context.WithTimeout(parentCtx, 10*time.Second)
 ```
 
 
-#### НЕ хранить контексты в атрибутах структур
+* **НЕ хранить контексты в атрибутах структур**
 ```go
 // ❌ Bad - context stored in struct
 type Server struct {
@@ -104,13 +109,13 @@ type Server struct {
 func (s *Server) ProcessRequest(ctx context.Context) error
 ```
 
-#### НЕ передавать nil-контексты
+* **НЕ передавать nil-контексты**
 ```golang
 ProcessData(nil, data) // ❌ Bad
 ProcessData(context.Background(), data) // ✅ Good
 ```
 
-#### НЕ использовать контексты для опционных параметров
+* **НЕ использовать контексты для опционных параметров**
 ```go
 // ❌ Bad - using context for config
 ctx = context.WithValue(ctx, "retryCount", 3)
@@ -123,7 +128,7 @@ func ProcessData(ctx context.Context, cfg Config) error
 ```
 
 
-#### НЕ игнорировать отмену контекста
+* **НЕ игнорировать отмену контекста, проверять ctx.Err() после ctx.Done()**
 ```go
 // ❌ Bad - ignoring context
 func doWork(ctx context.Context) {
@@ -147,20 +152,82 @@ func doWork(ctx context.Context) error {
 }
 ```
 
-#### 
 
-- **`context.Background()` только в `main` или на верхнем уровне:** Для инициализации корневого контекста.
-- **`context.TODO()` как временная мера:** Когда вы еще не решили, какой контекст использовать, или функция находится в процессе рефакторинга.
-- **`context.WithValue()` с осторожностью:** Только для данных, специфичных для запроса, и используйте кастомные типы для ключей. Не для опциональных параметров!
-- **Никогда не передавайте `nil` `Context`:** Если не уверены, передайте `context.TODO()`. Однако, функции должны быть готовы к тому, что `Context` может быть `nil`, хотя это считается плохой практикой со стороны вызывающего. Лучше всегда ожидать не-`nil` `Context`.
-- **Канал `Done()` только для чтения:** `<-ctx.Done()`.
-- **Проверяйте `ctx.Err()` после `ctx.Done()`:** Чтобы понять причину отмены.
-- **Контекст распространяется вниз по стеку вызовов.** Отмена родительского контекста отменяет все дочерние.
+## ОБЩИЕ ОШИБКИ ИСПОЛЬЗОВАНИЯ КОНТЕКСТОВ
+
+- **Утечки памяти из-за игнорирования cancel()**
+```go 
+// ❌ Memory leak - cancel not called
+func badExample() {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    // cancel() never called - goroutine and timer leak!
+    doWork(ctx)
+}
+
+// ✅ Fixed - always call cancel
+func goodExample() {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel() // Always call cancel
+    doWork(ctx)
+}
+```
+
+- **Условия гонки со значениями контекстов**
+```go
+// ❌ Race condition - value might change
+func badExample(ctx context.Context) {
+    go func() {
+        userID := ctx.Value("userID").(string) // Might panic if nil
+        processUser(userID)
+    }()
+}
+
+// ✅ Safe value extraction
+func goodExample(ctx context.Context) {
+    userIDValue := ctx.Value("userID")
+    if userIDValue == nil {
+        return // Handle missing value
+    }
+    userID, ok := userIDValue.(string)
+    if !ok {
+        return // Handle wrong type
+    }
+    
+    go func() {
+        processUser(userID)
+    }()
+}
+```
+
+- **Проблемы наследования контекста**
+```go
+// ❌ Bad - creating independent contexts
+func badChain() {
+    ctx1, cancel1 := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel1()
+    
+    ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second) // Independent!
+    defer cancel2()
+    
+    doWork(ctx2) // Won't inherit ctx1's cancellation
+}
+
+// ✅ Good - proper context chaining
+func goodChain() {
+    ctx1, cancel1 := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel1()
+    
+    ctx2, cancel2 := context.WithTimeout(ctx1, 5*time.Second) // Inherits from ctx1
+    defer cancel2()
+    
+    doWork(ctx2) // Will be cancelled when ctx1 OR ctx2 times out
+}
+```
 
 
 
 
-## Примеры
+## ПРИМЕРЫ
 ####  WithCancel:
 	
 ```go
