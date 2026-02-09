@@ -43,7 +43,7 @@ go get golang.org/x/sync/singleflight
 
 
 
-### Пример использования 
+## Пример использования 
 ```go
 package main
 
