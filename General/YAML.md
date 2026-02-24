@@ -59,6 +59,7 @@ port: 8080  # Комментарий после значения
 name: John Doe
 status: active
 special: "value with : colon"  # кавычки нужны при спецсимволах
+special2: 'another value' # одинарные кавычки также применимы при определении строки
 
 # Числа
 age: 30
