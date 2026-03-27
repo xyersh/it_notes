@@ -1,5 +1,5 @@
 ### Импорты
-- net/http/pprof
+- `import "net/http/pprof"`
 
 
 ### База
