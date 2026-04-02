@@ -29,4 +29,5 @@
 
 ### Профилирование горутин
 
-`pprof.Lookup("goroutine").WriteTo(f io.Writer, debug int)` - 
+`pprof.Lookup("goroutine").WriteTo(f io.Writer, debug int)` - запуск профилирования состояния горутин, где `debug` - флаг для определения формата получаемой информации:
+	- 0 - 
