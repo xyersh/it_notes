@@ -22,8 +22,10 @@
 - docker run --name <name> <image> - запуск образа с заданием имени новому контейнеру
 - docker run --it <image> - запуск образа в интерактивном режиме
 - docker run -d <image> - запуск образа в detouched режиме (противоположность -it)
-- docker start <comtainer>
+- docker start <container>
 - docker start -i <contaner>
+- docker run -p <[IP:]host-port>:<container-port> <image> - запуск контейнера с пробросом портов. Можно указывать IP, по которому приложение будет доступно.
+
 
 - docker stop <container> - остановка работающего контейнера
 
