@@ -7,7 +7,7 @@ FROM ubuntu:22.04
 ```Dockerfile
 LABEL author=Xyersh lang=english
 ```
-- Команды. выполняются на базовом образе. Выполняется во время сборки образа.
+- Команды. выполняются на базовом образе. **Выполняется во время сборки образа.**
 ```Dockerfile
 RUN apt-get update
 RUN apt-get  install nginx -y
