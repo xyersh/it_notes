@@ -26,8 +26,13 @@
 - docker start -i <contaner>
 - docker run -p <[IP:]host-port>:<container-port> <image> - запуск контейнера с пробросом портов. Можно указывать IP, по которому приложение будет доступно.
 
-
 - docker stop <container> - остановка работающего контейнера
+
+- docker inspect <container> - получить инфо о работающем контейнере
+- docker inspect <container> | grep <TAG> - просмотреть инфо конкретного раздела работающего контейнера (linux)
+- docker inspect <container> | findstr <TAG> - просмотреть инфо конкретного раздела работающего контейнера (Windows)
+
+- docker exec -it <container> <app> - открыть терминал работающего контейнера с запуском оболочки
 
 - docker rmi <image[:version]>
 
