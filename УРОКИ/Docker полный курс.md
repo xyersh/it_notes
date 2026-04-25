@@ -25,7 +25,10 @@
 - docker start <container>
 - docker start -i <contaner>
 - docker run -p <[IP:]host-port>:<container-port> <image> - запуск контейнера с пробросом портов. Можно указывать IP, по которому приложение будет доступно.
-
+- docker run -v <host_path>:<container_path> - запуск контейнера с в bind mount (с привязкой к диреториям хоста)
+```
+ docker run -d -p 127.0.0.1:8888:80 -v ${pwd}\dev\site:/usr/share/nginx/html --name server nginx
+```
 - docker stop <container> - остановка работающего контейнера
 
 - docker inspect <container> - получить инфо о работающем контейнере
@@ -51,10 +54,20 @@
 
 - docker builder prune [-a] - удалить кэш сборок
 
+- docker compose up - запуск файла docker-compose.yml находящегося в текущей директории 
+- docker compose  up -d -  ... в detauched режиме 
+- docker compose -f <compose_file> up - запуск сборки из файла с указанным именем.
+- docker compose down - остановка приложения с последующим удалением запущенных контейнеров и созданных сетей
+-
+
 ### Команды linux
 - apt-get update
 - apt-get install -y curl
-
+- cat <file_name> - показать все  содержимое файла
+- head <file_name> - показать содержимое первых строк файла
+- tail <file_name> - показать содержимое последних строк файла
+- more <file_name> - показать содержимое файла с возможностью прокрутки
+- pwd - текущая рабочая директория
 
 ### Dockerfile
 - FROM
@@ -65,4 +78,16 @@
 - CMD
 
 Каждая команда RUN = один дополнительный слой в образе
-	
+
+### Перенос строки в командной оболочке
+- `\` - linux
+- \` - windows powershell
+- `^` - windows cmd
+
+
+
+### nginx
+- `/etc/nginx/conf.d/default.conf` - здесь настройки сервера
+	- location
+		- root - директория для статических файлов
+		- index - указываются 
