@@ -45,6 +45,15 @@
  - `![интернет ссылка:](https://www.google.com/url?sa=i&url=https%3A%2F%2Fgithub.com%2Fgolang%2Fgo&psig=AOvVaw3JxzeH5l3SX6gCK44B9XO1&ust=1736116171874000&source=images&cd=vfe&opi=89978449&ved=0CBQQjRxqFwoTCLjItPGO3YoDFQAAAAAdAAAAABAE)`
 	  ![интернет картинка:](https://camo.githubusercontent.com/ff89c51c9e5a3de2b752b37bf6ab32401b9649d7acb1633ece9a40c85ae28b95/68747470733a2f2f676f6c616e672e6f72672f646f632f676f706865722f6669766579656172732e6a7067)
 
+#### Блоки с математическими выражениями
+```
+$$
+...
+$$
+```
+$$
+x=(2+2)^2/sqrt(3)
+$$
 
 #### Подсветка кода
 ```javascript
