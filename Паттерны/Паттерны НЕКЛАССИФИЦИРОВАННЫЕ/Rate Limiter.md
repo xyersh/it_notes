@@ -32,6 +32,99 @@ Rate Limiter должен быть установлен **перед всеми 
 - **Платёжных операций:** Для предотвращения многократной отправки одного и того же запроса.
 - **Высоконагруженных API-методов:** Например, `/api/search` или `/api/feed`, которые могут быть очень ресурсоёмкими.
 
+### Уровни Rate Limiter'ов
+Rate limiter'ы (ограничители частоты запросов) применяются на разных уровнях архитектуры системы. Использование нескольких уровней одновременно называется **эшелонированной защитой (Defense in Depth)**. Если лимитер на одном уровне не справился или был обойден, его подстрахует следующий.
+
+Уровни применения rate limiting можно разделить от «внешних» (ближе к интернету) к «внутренним» (ближе к ядру системы).
+
+
+#### Сетевой / Периметральный уровень (Edge / CDN / WAF)
+
+Это самый внешний рубеж обороны. Запросы фильтруются еще до того, как достигнут вашей инфраструктуры.
+
+- **Инструменты:** Cloudflare, AWS WAF, Akamai, F5, специализированные DDoS-щиты.
+- **Идентификатор:** Обычно IP-адрес клиента или ASN.
+- **Сильные стороны:**
+    - Отсекает malicious-трафик (ботов, DDoS) максимально рано, экономя внутренний трафик и вычислительные ресурсы.
+    - Не нагружает ваши серверы вообще.
+- **Слабые стороны:**
+    - Низкая гранулярность. Сложно реализовать бизнес-логику (например, "лимит 10 запросов в час для бесплатных пользователей и 1000 для платных").
+    - За NAT-ом (например, в офисе или мобильной сети) у тысяч пользователей один IP-адрес, что может привести к ложным срабатываниям.
+
+#### Уровень API-шлюза / Балансировщика (API Gateway / Reverse Proxy)
+
+Запросы проходят через единый входной узел перед распределением по микросервисам.
+
+- **Инструменты:** Nginx, Envoy, Kong, Traefik, AWS API Gateway, Apigee.
+- **Идентификатор:** IP-адрес, API Key, токен авторизации (JWT), заголовки.
+- **Сильные стороны:**
+    - Централизованное управление лимитами для всех сервисов.
+    - Хороший баланс между производительностью и гибкостью (можно настраивать лимиты для разных роутов/эндпоинтов).
+    - Снижает нагрузку на бэкенд, отбрасывая запросы на уровне прокси.
+- **Слабые стороны:**
+    - Может стать узким местом (Single Point of Failure / Bottleneck).
+    - В распределенных системах (несколько инстансов шлюза) требует выноса счетчиков в общее хранилище (Redis), что добавляет задержку (latency).
+
+#### Уровень приложения / Микросервиса (Application / Service Level)
+
+Rate limiting реализуется непосредственно внутри кода сервиса (часто в виде middleware/interceptor).
+
+- **Инструменты:** Встроенные библиотеки (как в предыдущем ответе для Go), Spring Boot Interceptors, Express middleware.
+- **Идентификатор:** User ID, Tenant ID, конкретный ресурс (например, `document_id`), тип действия.
+- **Сильные стороны:**
+    - **Максимальная гранулярность.** Можно ограничивать не просто "запросы к API", а конкретные бизнес-операции (например, "не более 3 смен пароля в сутки" или "не более 5 добавлений в корзину в минуту").
+    - Понимает бизнес-контекст (роли пользователей, статусы подписок).
+- **Слабые стороны:**
+    - Тратит ресурсы приложения (CPU, память, сетевые вызовы к Redis) на обработку и отклонение запроса.
+    - Бесполезен против мощных DDoS-атак, так как трафик уже дошел до серверов.
+
+
+#### Клиентский уровень (Client-side)
+
+Ограничения встраиваются в код самого клиента (веб-фронтенд, мобильное приложение, SDK).
+
+- **Инструменты:** Debounce/Throttle функции в JS, кастомная логика в мобильных приложениях.
+- **Идентификатор:** Сам клиент.
+- **Сильные стороны:**
+    - Улучшает UX (например, предотвращает двойную отправку формы при двойном клике).
+    - Снижает нагрузку на сеть и сервер за счет отсечения явного "мусорного" трафика (опечатки, случайные клики).
+- **Слабые стороны:**
+    - **Ненадежность.** Злоумышленник может легко обойти клиентский лимитер, отправляя запросы напрямую через `curl` или Postman. Клиентский rate limiting — это только про UX, а не про безопасность.
+
+
+#### Уровень хранилищ данных / Инфраструктуры (Database / Storage Level)
+
+Самый глубокий уровень защиты. Ограничивает не HTTP-запросы, а операции с базой данных или очередями.
+
+- **Инструменты:** PgBouncer (лимиты на пул соединений), Redis (`CLIENT PAUSE`, лимиты на команды), лимиты очередей (RabbitMQ/Kafka prefetch limits).
+- **Идентификатор:** Приложение-клиент БД, пользователь БД, конкретная таблица.
+- **Сильные стороны:**
+    - Гарантированная защита самого уязвимого и дорогого ресурса — базы данных.
+    - Предотвращает каскадные сбои (когда падение БД из-за перегрузки валит все микросервисы).
+- **Слабые стороны:**
+    - Очень грубая гранулярность. БД не знает, какой именно бизнес-процесс вызвал запрос.
+
+
+### Сводная таблица для выбора уровня
+
+| Уровень         | Где применяется               | Основная цель                            | Гранулярность                 | Защищает от DDoS? |
+| --------------- | ----------------------------- | ---------------------------------------- | ----------------------------- | ----------------- |
+| **Edge / CDN**  | Cloudflare, WAF               | Отсечь мусор и ботов                     | Низкая (IP)                   | **Да, отлично**   |
+| **API Gateway** | Nginx, Kong, Envoy            | Защита периметра сервисов, роутинг       | Средняя (API Key, URL)        | Частично          |
+| **Application** | Код микросервиса (Go, Java)   | Защита бизнес-логики, fair-use           | **Высокая** (User ID, Action) | Нет               |
+| **Client**      | Браузер, Мобильное приложение | Улучшение UX, защита от случайных кликов | N/A                           | Нет               |
+| **Database**    | PgBouncer, Redis              | Защита хранилища от перегрузки           | Низкая (Connection, DB User)  | Нет               |
+
+
+### Best Practices
+В современных высоконагруженных системах используют **комбинацию уровней**:
+1. **Cloudflare/WAF** ставит жесткий лимит по IP, чтобы отсечь ботов и DDoS.
+2. **API Gateway** ограничивает общую частоту запросов для каждого API-ключа/клиента.
+3. **Микросервис (Application)** внутри себя ограничивает конкретные тяжелые операции (например, генерацию отчетов или отправку SMS) для конкретного `User ID`.
+4. **Фронтенд (Client)** делает debounce на кнопке "Отправить", чтобы пользователь не спамил.
+
+
+
 ### Алгоритмы
 
 
@@ -131,121 +224,7 @@ Rate Limiter должен быть установлен **перед всеми 
 
 ### ПРИМЕРЫ
 
-#### Использование готовой реализации на Go (Алгоритм "Token Bucket")
-
-Наиболее популярным и эффективным алгоритмом для Rate Limiter'а является **Token Bucket** (Ведро с токенами).
-- **Идея:** Каждому клиенту выделяется "ведро" фиксированного размера. Токены, символизирующие право на запрос, добавляются в ведро с постоянной скоростью. Чтобы сделать запрос, клиент должен извлечь один токен. Если токенов нет, запрос отклоняется.
-Ниже представлена реализация **Token Bucket** в Go с использованием пакета `golang.org/x/time/rate`, который часто используется для этой цели.
-
-```go 
-package main
-
-import (
-	"fmt"
-	"log"
-	"net/http"
-	"time"
-
-	"golang.org/x/time/rate" // Стандартная библиотека для Rate Limiting
-)
-
-// rateLimiterManager содержит мапу для хранения ограничителей для каждого клиента.
-type rateLimiterManager struct {
-	limiters map[string]*rate.Limiter
-	rate     rate.Limit    // Скорость (количество событий в секунду)
-	burst    int           // Размер "ведра" (максимальный всплеск)
-}
-
-// newRateLimiterManager создает новый менеджер ограничителей.
-func newRateLimiterManager(r rate.Limit, b int) *rateLimiterManager {
-	return &rateLimiterManager{
-		limiters: make(map[string]*rate.Limiter),
-		rate:     r,
-		burst:    b,
-	}
-}
-
-// getLimiter возвращает ограничитель для заданного IP-адреса.
-// Если ограничителя нет, он создается и добавляется в мапу.
-func (rlm *rateLimiterManager) getLimiter(ip string) *rate.Limiter {
-	// 1. Поиск в мапе. Требуется блокировка для доступа к общей мапе.
-	// В реальном приложении для потокобезопасности нужна sync.RWMutex.
-	// Для простоты примера мы ее опускаем, но в продакшене это обязательно!
-	
-	limiter, exists := rlm.limiters[ip]
-	if !exists {
-		// 2. Если ограничителя нет, создаем новый с заданными параметрами.
-		// rate.Every(time.Second/rlm.rate) - задает интервал пополнения.
-		limiter = rate.NewLimiter(rlm.rate, rlm.burst)
-		rlm.limiters[ip] = limiter
-		// NOTE: В продакшене нужно добавить логику для очистки старых ограничителей (Garbage Collection).
-	}
-	return limiter
-}
-
-// rateLimitMiddleware - это middleware для обработки HTTP-запросов.
-func (rlm *rateLimiterManager) rateLimitMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Получаем IP-адрес клиента. (Для продакшена нужна более надежная логика: X-Forwarded-For, RemoteAddr).
-		clientIP := r.RemoteAddr
-
-		// 2. Получаем или создаем Rate Limiter для этого IP.
-		limiter := rlm.getLimiter(clientIP)
-
-		// 3. Проверяем, разрешен ли запрос.
-		// Allow() пытается извлечь один токен. Если токена нет, возвращает false.
-		if !limiter.Allow() {
-			// 4. Запрос отклонен: возвращаем статус 429 Too Many Requests.
-			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte("429 Too Many Requests: Вы превысили лимит запросов."))
-			return
-		}
-
-		// 5. Запрос разрешен: передаем управление следующему обработчику.
-		next.ServeHTTP(w, r)
-	})
-}
-
-// helloHandler - основной обработчик, который вызывается, если запрос разрешен.
-func helloHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Привет, мир! Запрос обработан успешно.")
-}
-
-func main() {
-	// Устанавливаем лимит: 5 запросов в секунду (5/s) с максимальным всплеском (burst) 10.
-	// Это означает:
-	// - 5 токенов добавляются каждую секунду.
-	// - Клиент может сделать 10 запросов одновременно, если ведро полное.
-	// - После этого он может делать 5 запросов в секунду.
-	rlm := newRateLimiterManager(5, 10)
-
-	// Создаем цепочку: Middleware -> Handler.
-	handler := rlm.rateLimitMiddleware(http.HandlerFunc(helloHandler))
-
-	// Запускаем сервер
-	http.Handle("/", handler)
-	log.Println("Сервер запущен на :8080. Лимит: 5req/s, Burst: 10.")
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
-
-// Как проверить:
-// Запустите сервер и в другом терминале быстро выполните команду:
-// for i in {1..20}; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8080/; done
-// Вы увидите, что первые 10-11 запросов вернут 200, а последующие, сделанные слишком быстро, начнут возвращать 429.
-```
-
-
-
-#### Реализация алгоритма **TokenBucket**
-Мы создадим структуру `TokenBucket`, которая будет хранить своё состояние:
-
-- `capacity` — максимальное количество токенов.
-- `tokens` — текущее количество токенов.
-- `rate` — скорость пополнения (токенов в секунду).
-- `lastTokenTime` — время последнего пополнения токенов.
-- `mu` — мьютекс для безопасной работы в конкурентной среде.
-
-Основная логика будет заключаться в том, чтобы перед каждой попыткой взять токен сначала вычислить, сколько новых токенов должно было накопиться со времени последней операции.
+#### Единый пример In-emmory rate limiter на Go с применением различных алгоритмов
 
 ```go
 package main
@@ -256,219 +235,258 @@ import (
 	"time"
 )
 
-// TokenBucket представляет наше "ведро с токенами".
-type TokenBucket struct {
-	capacity      int64 // Максимальная емкость ведра (burst)
-	tokens        int64 // Текущее количество токенов в ведре
-
-	rate          int64     // Скорость пополнения (токенов в секунду)
-	lastTokenTime time.Time // Время последнего пополнения токенов
-	mu            sync.Mutex
+// ==========================================
+// 1. Fixed Window (Фиксированное окно)
+// ==========================================
+type FixedWindowLimiter struct {
+	mu         sync.Mutex
+	limit      int
+	windowSize time.Duration
+	count      int
+	windowStart time.Time
 }
 
-// NewTokenBucket создает новое ведро с токенами.
-// rate - количество токенов, добавляемых в секунду.
-// capacity - максимальное количество токенов в ведре.
-func NewTokenBucket(rate, capacity int64) *TokenBucket {
-	if rate <= 0 || capacity <= 0 {
-		return nil
-	}
-	return &TokenBucket{
-		capacity:      capacity,
-		tokens:        capacity, // Начинаем с полного ведра
-		rate:          rate,
-		lastTokenTime: time.Now(),
+func NewFixedWindow(limit int, window time.Duration) *FixedWindowLimiter {
+	return &FixedWindowLimiter{
+		limit:       limit,
+		windowSize:  window,
+		windowStart: time.Now(),
 	}
 }
 
-// refill — внутренний метод для пополнения токенов.
-// Он вычисляет, сколько времени прошло с последнего пополнения,
-// и добавляет соответствующее количество токенов.
-func (tb *TokenBucket) refill() {
+func (l *FixedWindowLimiter) Allow() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	now := time.Now()
-	// Вычисляем время, прошедшее с последнего пополнения
-	duration := now.Sub(tb.lastTokenTime)
-
-	// Вычисляем, сколько токенов нужно добавить.
-	// Используем наносекунды для точности.
-	tokensToAdd := (duration.Nanoseconds() * tb.rate) / 1e9 // 1e9 наносекунд = 1 секунда
-
-	if tokensToAdd > 0 {
-		// Добавляем новые токены
-		tb.tokens += tokensToAdd
-		// Убеждаемся, что количество токенов не превышает емкость
-		if tb.tokens > tb.capacity {
-			tb.tokens = tb.capacity
-		}
-		// Обновляем время последнего пополнения
-		tb.lastTokenTime = now
+	// Если окно прошло, сбрасываем
+	if now.Sub(l.windowStart) > l.windowSize {
+		l.count = 0
+		l.windowStart = now
 	}
-}
 
-// Take пытается взять один токен из ведра.
-// Возвращает true, если токен успешно взят, и false в противном случае.
-// Это неблокирующая операция.
-func (tb *TokenBucket) Take() bool {
-	// Блокируем для безопасного доступа к состоянию
-	tb.mu.Lock()
-	defer tb.mu.Unlock()
-
-	// Перед тем как взять токен, пополняем ведро
-	tb.refill()
-
-	// Проверяем, есть ли хотя бы один токен
-	if tb.tokens >= 1 {
-		tb.tokens--
+	if l.count < l.limit {
+		l.count++
 		return true
 	}
-
 	return false
 }
 
-// --- Демонстрация работы ---
-func main() {
-	// Создаем ведро: 2 токена в секунду, максимальная емкость 5.
-	bucket := NewTokenBucket(2, 5)
-
-	fmt.Printf("Создано ведро: rate=2, capacity=5. Текущее время: %s\n\n", time.Now().Format("15:04:05"))
-
-	// 1. Демонстрация "всплеска" (burst)
-	// Пытаемся быстро взять 7 токенов. Первые 5 должны пройти успешно, т.к. ведро полное.
-	fmt.Println("--- Попытка взять 7 токенов подряд (демонстрация capacity) ---")
-	for i := 1; i <= 7; i++ {
-		if bucket.Take() {
-			fmt.Printf("Запрос %d: УСПЕХ\n", i)
-		} else {
-			fmt.Printf("Запрос %d: ОТКАЗ (нет токенов)\n", i)
-		}
-	}
-	fmt.Println("---------------------------------------------------------")
-
-	// 2. Демонстрация пополнения
-	// Ждем 1 секунду. За это время должны добавиться 2 новых токена (т.к. rate=2).
-	fmt.Printf("\nЖдем 1 секунду... Время: %s\n", time.Now().Format("15:04:05"))
-	time.Sleep(1 * time.Second)
-	fmt.Printf("Прошла 1 секунда. Время: %s\n\n", time.Now().Format("15:04:05"))
-
-	fmt.Println("--- Попытка взять 3 токена после паузы ---")
-	// Теперь пытаемся взять 3 токена. Первые 2 должны пройти, третий - нет.
-	for i := 1; i <= 3; i++ {
-		if bucket.Take() {
-			fmt.Printf("Запрос %d: УСПЕХ\n", i)
-		} else {
-			fmt.Printf("Запрос %d: ОТКАЗ (нет токенов)\n", i)
-		}
-	}
-	fmt.Println("---------------------------------------------------------")
-
-    // 3. Демонстрация того, что емкость не превышается
-	fmt.Printf("\nЖдем 3 секунды... Время: %s\n", time.Now().Format("15:04:05"))
-    time.Sleep(3 * time.Second) // За 3 секунды должно сгенерироваться 3*2=6 токенов
-	fmt.Printf("Прошло 3 секунды. Время: %s\n\n", time.Now().Format("15:04:05"))
-
-    fmt.Println("--- Попытка взять 6 токенов после долгой паузы ---")
-    // Хоть и сгенерировалось 6 токенов, в ведре их будет только 5 (макс. емкость)
-    for i := 1; i <= 6; i++ {
-        if bucket.Take() {
-			fmt.Printf("Запрос %d: УСПЕХ\n", i)
-		} else {
-			fmt.Printf("Запрос %d: ОТКАЗ (нет токенов)\n", i)
-		}
-    }
+// ==========================================
+// 2. Sliding Window Log (Точное скользящее окно)
+// ==========================================
+type SlidingWindowLogLimiter struct {
+	mu         sync.Mutex
+	limit      int
+	windowSize time.Duration
+	log        []time.Time
 }
-```
 
-##### Разбор кода 
-1. **`NewTokenBucket`**: Создаёт ведро и сразу же "наполняет" его до краёв (`tokens: capacity`). Это позволяет системе сразу же обработать всплеск запросов, равный ёмкости ведра.
-2. **`refill()`**: Это самая важная часть. Она не запускается по таймеру, а вызывается "лениво" в момент запроса токена. Это эффективно, так как не тратит ресурсы, если система простаивает. Расчёт `(duration.Nanoseconds() * tb.rate) / 1e9` позволяет корректно обрабатывать любые промежутки времени и скорости.
-3. **`Take()`**: Публичный метод. Он оборачивает логику в мьютекс, чтобы избежать гонок данных, вызывает `refill` для актуализации состояния и затем пытается взять токен.
+func NewSlidingWindowLog(limit int, window time.Duration) *SlidingWindowLogLimiter {
+	return &SlidingWindowLogLimiter{
+		limit:      limit,
+		windowSize: window,
+		log:        make([]time.Time, 0),
+	}
+}
 
+func (l *SlidingWindowLogLimiter) Allow() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
-#### Реализация алгоритма **Leaky Bucket**
+	now := time.Now()
+	windowStart := now.Add(-l.windowSize)
 
-```go
-package main  
-  
-import (  
-    "fmt"  
-    "sync"    "time")  
-  
-// LeakyBucket реализует логику "дырявого ведра".type LeakyBucket struct {  
-    queue   chan struct{} // Очередь запросов  
-    ticker  *time.Ticker  // Тикер, определяющий скорость "утечки"  
-    wg      sync.WaitGroup  
-    stopped bool  
-}  
-  
-// NewLeakyBucket создает и запускает новый LeakyBucket.  
-// ratePerSec - количество запросов в секунду, которое может "утечь".  
-// capacity - максимальный размер очереди (объем ведра).  
-func NewLeakyBucket(ratePerSec int, capacity int) *LeakyBucket {  
-    if ratePerSec <= 0 || capacity <= 0 {  
-       return nil  
-    }  
-  
-    lb := &LeakyBucket{  
-       queue:  make(chan struct{}, capacity),  
-       ticker: time.NewTicker(time.Second / time.Duration(ratePerSec)),  
-    }  
-  
-    lb.wg.Add(1)  
-    go lb.processor()  
-  
-    return lb  
-}  
-  
-// processor - это горутина, которая "обрабатывает" запросы с постоянной скоростью.func (lb *LeakyBucket) processor() {  
-    defer lb.wg.Done()  
-    for range lb.ticker.C {  
-       // При каждом тике мы "обрабатываем" один запрос из очереди.  
-       // Если очередь пуста, эта операция просто ждёт следующего запроса.       <-lb.queue  
-       fmt.Printf("[%s] Запрос обработан (утёк из ведра)\n", time.Now().Format("15:04:05.000"))  
-    }  
-}  
-  
-// Allow проверяет, можно ли добавить запрос в очередь.func (lb *LeakyBucket) Allow() bool {  
-    if lb.stopped {  
-       return false  
-    }  
-    // Используем select для неблокирующей отправки в канал.  
-    select {  
-    case lb.queue <- struct{}{}:  
-       // Если удалось добавить в очередь, значит, запрос принят.  
-       return true  
-    default:  
-       // Если очередь заполнена (канал заблокирован), запрос отклоняется.  
-       return false  
-    }  
-}  
-  
-// Stop останавливает обработчик.func (lb *LeakyBucket) Stop() {  
-    lb.stopped = true  
-    lb.ticker.Stop()  
-    // Закрываем канал, чтобы разблокировать processor, если он ждет  
-    close(lb.queue)  
-    lb.wg.Wait()  
-}  
-  
-func main() {  
-    // Создаем ведро: 2 запроса/сек, емкость 5.  
-    bucket := NewLeakyBucket(2, 5)  
-    defer bucket.Stop()  
-  
-    // Попробуем быстро отправить 10 запросов (создать всплеск).  
-    fmt.Println("--- Отправка 10 запросов ---")  
-    for i := 1; i <= 10; i++ {  
-       if bucket.Allow() {  
-          fmt.Printf("Запрос %d: ПРИНЯТ в очередь\n", i)  
-       } else {  
-          fmt.Printf("Запрос %d: ОТКЛОНЕН (ведро полное)\n", i)  
-       }  
-       time.Sleep(100 * time.Millisecond) // Небольшая пауза между попытками  
-    }  
-  
-    // Ждем немного, чтобы увидеть, как оставшиеся в очереди запросы обрабатываются.  
-    fmt.Println("\n--- Ожидание обработки оставшихся запросов ---")  
-    time.Sleep(3 * time.Second)  
+	// Удаляем старые записи (очищаем окно)
+	validIdx := 0
+	for _, t := range l.log {
+		if t.After(windowStart) {
+			l.log[validIdx] = t
+			validIdx++
+		}
+	}
+	l.log = l.log[:validIdx]
+
+	if len(l.log) < l.limit {
+		l.log = append(l.log, now)
+		return true
+	}
+	return false
+}
+
+// ==========================================
+// 3. Sliding Window Counter (Счетчик скользящего окна)
+// ==========================================
+type SlidingWindowCounterLimiter struct {
+	mu             sync.Mutex
+	limit          int
+	windowSize     time.Duration
+	prevCount      int
+	currCount      int
+	windowStart    time.Time
+}
+
+func NewSlidingWindowCounter(limit int, window time.Duration) *SlidingWindowCounterLimiter {
+	return &SlidingWindowCounterLimiter{
+		limit:       limit,
+		windowSize:  window,
+		windowStart: time.Now(),
+	}
+}
+
+func (l *SlidingWindowCounterLimiter) Allow() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	elapsed := now.Sub(l.windowStart)
+
+	// Если прошло больше 2 окон, сбрасываем всё
+	if elapsed > l.windowSize*2 {
+		l.prevCount = 0
+		l.currCount = 0
+		l.windowStart = now
+		elapsed = 0
+	} else if elapsed > l.windowSize {
+		// Сдвиг окон: текущее становится предыдущим
+		l.prevCount = l.currCount
+		l.currCount = 0
+		l.windowStart = l.windowStart.Add(l.windowSize)
+		elapsed = now.Sub(l.windowStart)
+	}
+
+	// Вычисляем вес предыдущего окна
+	// Если прошло 20% текущего окна, то 80% предыдущего окна попадают в наше скользящее окно
+	weight := float64(l.windowSize-elapsed) / float64(l.windowSize)
+	estimatedCount := float64(l.prevCount)*weight + float64(l.currCount)
+
+	if estimatedCount < float64(l.limit) {
+		l.currCount++
+		return true
+	}
+	return false
+}
+
+// ==========================================
+// 4. Token Bucket (Бак с токенами)
+// ==========================================
+type TokenBucketLimiter struct {
+	mu         sync.Mutex
+	tokens     float64
+	maxTokens  float64
+	refillRate float64 // токенов в секунду
+	lastRefill time.Time
+}
+
+func NewTokenBucket(maxTokens int, refillRatePerSec float64) *TokenBucketLimiter {
+	return &TokenBucketLimiter{
+		tokens:     float64(maxTokens),
+		maxTokens:  float64(maxTokens),
+		refillRate: refillRatePerSec,
+		lastRefill: time.Now(),
+	}
+}
+
+func (l *TokenBucketLimiter) Allow() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	elapsed := now.Sub(l.lastRefill).Seconds()
+	
+	// Пополняем токены
+	l.tokens += elapsed * l.refillRate
+	if l.tokens > l.maxTokens {
+		l.tokens = l.maxTokens
+	}
+	l.lastRefill = now
+
+	if l.tokens >= 1.0 {
+		l.tokens -= 1.0
+		return true
+	}
+	return false
+}
+
+// ==========================================
+// 5. Leaky Bucket (Протекающее ведро - счетчик)
+// ==========================================
+type LeakyBucketLimiter struct {
+	mu         sync.Mutex
+	water      float64 // текущий уровень воды
+	capacity   float64
+	leakRate   float64 // единиц воды утекает в секунду
+	lastLeak   time.Time
+}
+
+func NewLeakyBucket(capacity int, leakRatePerSec float64) *LeakyBucketLimiter {
+	return &LeakyBucketLimiter{
+		capacity: float64(capacity),
+		leakRate: leakRatePerSec,
+		lastLeak: time.Now(),
+	}
+}
+
+func (l *LeakyBucketLimiter) Allow() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	elapsed := now.Sub(l.lastLeak).Seconds()
+
+	// "Протекаем" (уменьшаем уровень воды)
+	l.water -= elapsed * l.leakRate
+	if l.water < 0 {
+		l.water = 0
+	}
+	l.lastLeak = now
+
+	// Пытаемся добавить воду (запрос)
+	if l.water+1.0 <= l.capacity {
+		l.water += 1.0
+		return true
+	}
+	
+	// Ведро переполнено
+	return false
+}
+
+// ==========================================
+// Тестирование
+// ==========================================
+func main() {
+	fmt.Println("--- Fixed Window ---")
+	fw := NewFixedWindow(2, time.Second)
+	fmt.Println(fw.Allow()) // true
+	fmt.Println(fw.Allow()) // true
+	fmt.Println(fw.Allow()) // false (лимит исчерпан)
+
+	fmt.Println("\n--- Sliding Window Log ---")
+	swLog := NewSlidingWindowLog(2, time.Second)
+	fmt.Println(swLog.Allow()) // true
+	fmt.Println(swLog.Allow()) // true
+	fmt.Println(swLog.Allow()) // false
+
+	fmt.Println("\n--- Sliding Window Counter ---")
+	swCnt := NewSlidingWindowCounter(2, time.Second)
+	fmt.Println(swCnt.Allow()) // true
+	fmt.Println(swCnt.Allow()) // true
+	fmt.Println(swCnt.Allow()) // false
+
+	fmt.Println("\n--- Token Bucket ---")
+	tb := NewTokenBucket(2, 1.0) // 2 токена, 1 токен в сек
+	fmt.Println(tb.Allow())      // true (осталось 1)
+	fmt.Println(tb.Allow())      // true (осталось 0)
+	fmt.Println(tb.Allow())      // false (бак пуст)
+	time.Sleep(1100 * time.Millisecond) // ждем пополнения
+	fmt.Println(tb.Allow())      // true (токен восстановился)
+
+	fmt.Println("\n--- Leaky Bucket ---")
+	lb := NewLeakyBucket(2, 1.0) // вместимость 2, утечка 1 в сек
+	fmt.Println(lb.Allow())      // true (уровень 1)
+	fmt.Println(lb.Allow())      // true (уровень 2)
+	fmt.Println(lb.Allow())      // false (ведро полное)
+	time.Sleep(1100 * time.Millisecond) // ждем утечки
+	fmt.Println(lb.Allow())      // true (вода утекла, место освободилось)
 }
 ```
