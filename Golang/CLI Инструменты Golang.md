@@ -227,9 +227,17 @@ go test -run TestMyFunction
 # Запустить бенчмарки 
 go test -bench . 
 
-# Показать покрытие кода тестами 
+# Запустить фаззи-тесты
+go test -fuzz <FuzzTestAdd> <example/math>
+
+# Показать покрытие кода тестами в CLI
 go test -cover 
-go test -coverprofile=coverage.out && go tool cover -html=coverage.out # Сгенерировать HTML отчет
+
+# Сгенерировать HTML отчет покрытия тестами
+go test -coverprofile=coverage.out &&  
+
+# далее полученный отчет открываем командой
+go tool cover -html=coverage.out 
 ```
 
 
