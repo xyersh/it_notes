@@ -40,6 +40,16 @@ go test -run TestAdd/zero ## запускает только кейс "zero"
 ```
 
 
+### Покрытие кода тестированием
+снять профиль покрытия тестами
+```bash
+go test ./math -coverprofile=coverage.out
+```
+
+открыть профиль
+```bash
+ go tool cover -html=coverage.out
+```
 
 
 ПРИМЕР
@@ -65,3 +75,5 @@ func TestAdd(t *testing.T) {
     }
 }
 ```
+
+
